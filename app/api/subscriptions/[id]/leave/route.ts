@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "You must be logged in" }, { status: 401 });
@@ -12,7 +13,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   try {
     await prisma.$transaction(async (tx) => {
       const membership = await tx.member.findUnique({
-        where: { subscriptionId_userId: { subscriptionId: params.id, userId: session.user.id } },
+        where: { subscriptionId_userId: { subscriptionId: id, userId: session.user.id } },
       });
       if (!membership || !membership.active) {
         throw new Error("You're not a member of this group");
@@ -21,7 +22,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       await tx.member.update({ where: { id: membership.id }, data: { active: false } });
 
       const subscription = await tx.subscription.update({
-        where: { id: params.id },
+        where: { id },
         data: { occupiedSlots: { decrement: 1 }, status: "ACTIVE" },
       });
 
