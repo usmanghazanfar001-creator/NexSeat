@@ -8,9 +8,11 @@ import { SlotGauge } from "@/components/home/slot-gauge";
 import { formatCurrency, formatDate, computeSeatPrice } from "@/lib/utils";
 import { Star } from "lucide-react";
 
-export default async function GroupPage({ params }: { params: { id: string } }) {
+export default async function GroupPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
   const subscription = await prisma.subscription.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       owner: { select: { name: true, avatar: true, createdAt: true } },
       members: { include: { user: { select: { name: true, avatar: true } } }, where: { active: true } },
