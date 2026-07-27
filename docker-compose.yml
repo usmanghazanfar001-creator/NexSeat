@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexseat
+      POSTGRES_PASSWORD: nexseat
+      POSTGRES_DB: nexseat
+    ports:
+      - "5432:5432"
+    volumes:
+      - nexseat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexseat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nexseat:nexseat@db:5432/nexseat?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  nexseat_pgdata:

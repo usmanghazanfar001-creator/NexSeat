@@ -1,0 +1,264 @@
+// ShareAI database schema
+// Run `npm run db:push` for local dev, or `npm run db:migrate` to create a migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// AUTH
+// ---------------------------------------------------------------------------
+
+enum Role {
+  USER
+  OWNER
+  ADMIN
+}
+
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  password          String? // null when the account only uses OAuth
+  avatar            String?
+  role              Role      @default(USER)
+  verified          Boolean   @default(false)
+  wallet            Decimal   @default(0) @db.Decimal(10, 2)
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?
+  referralCode      String    @unique @default(cuid())
+  referredById      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  subscriptions     Subscription[]      @relation("SubscriptionOwner")
+  memberships       Member[]
+  payments          Payment[]
+  notifications     Notification[]
+  reviews           Review[]
+  supportTickets    SupportTicket[]
+  auditLogs         AuditLog[]
+  referredBy        User?               @relation("Referrals", fields: [referredById], references: [id])
+  referrals         User[]              @relation("Referrals")
+  sentMessages      Message[]           @relation("MessageSender")
+
+  @@index([email])
+}
+
+// NextAuth-compatible OAuth models (Google / GitHub login)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  // discriminates between "email verification" and "password reset" and "otp"
+  type       String   @default("EMAIL_VERIFY")
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// SUBSCRIPTIONS / GROUPS
+// ---------------------------------------------------------------------------
+
+enum SubscriptionStatus {
+  ACTIVE
+  FULL
+  PAUSED
+  CANCELLED
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  platform        String // e.g. "ChatGPT Plus"
+  logoUrl         String?
+  monthlyPrice    Decimal            @db.Decimal(10, 2)
+  ownerId         String
+  availableSlots  Int
+  occupiedSlots   Int                @default(0)
+  renewalDate     DateTime
+  status          SubscriptionStatus @default(ACTIVE)
+  description     String?
+  tosAcknowledged Boolean            @default(false) // owner confirms sharing is permitted
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  owner    User      @relation("SubscriptionOwner", fields: [ownerId], references: [id])
+  members  Member[]
+  payments Payment[]
+  reviews  Review[]
+  messages Message[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Member {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  active         Boolean  @default(true)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, userId])
+}
+
+model Review {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  userId         String
+  rating         Int // 1-5
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  senderId       String
+  body           String
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  sender       User          @relation("MessageSender", fields: [senderId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS / WALLET
+// ---------------------------------------------------------------------------
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  STRIPE
+  PAYPAL
+  RAZORPAY
+  JAZZCASH
+  WALLET
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  userId         String
+  subscriptionId String?
+  amount         Decimal       @db.Decimal(10, 2)
+  status         PaymentStatus @default(PENDING)
+  paymentMethod  PaymentMethod
+  transactionId  String        @unique
+  couponCode     String?
+  invoiceUrl     String?
+  createdAt      DateTime      @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+}
+
+model Coupon {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  percentOff     Int?
+  amountOff      Decimal? @db.Decimal(10, 2)
+  maxRedemptions Int?
+  timesRedeemed  Int      @default(0)
+  expiresAt      DateTime?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS / SUPPORT / ADMIN
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id        String       @id @default(cuid())
+  userId    String
+  subject   String
+  message   String
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model PlatformSetting {
+  id            String  @id @default(cuid())
+  key           String  @unique // e.g. "PLATFORM_FEE_PERCENT"
+  value         String
+  updatedAt     DateTime @updatedAt
+}
