@@ -6,13 +6,14 @@ import { joinSubscriptionSchema } from "@/lib/validators";
 import { computeSeatPrice } from "@/lib/utils";
 import crypto from "crypto";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "You must be logged in" }, { status: 401 });
   }
 
-  const parsed = joinSubscriptionSchema.safeParse({ ...(await req.json()), subscriptionId: params.id });
+  const parsed = joinSubscriptionSchema.safeParse({ ...(await req.json()), subscriptionId: id });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Lock the row logically by re-reading inside the transaction and
       // checking capacity before writing, so two concurrent joins can't
       // both succeed and overbook the last slot.
-      const subscription = await tx.subscription.findUniqueOrThrow({ where: { id: params.id } });
+      const subscription = await tx.subscription.findUniqueOrThrow({ where: { id } });
 
       if (subscription.ownerId === session.user.id) {
         throw new Error("You already own this subscription");
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const existingMember = await tx.member.findUnique({
-        where: { subscriptionId_userId: { subscriptionId: params.id, userId: session.user.id } },
+        where: { subscriptionId_userId: { subscriptionId: id, userId: session.user.id } },
       });
       if (existingMember?.active) {
         throw new Error("You're already a member of this group");
