@@ -9,34 +9,36 @@ const patchSchema = z.object({
   verified: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (session?.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const user = await prisma.user.update({ where: { id: params.id }, data: parsed.data });
+  const user = await prisma.user.update({ where: { id }, data: parsed.data });
 
   await prisma.auditLog.create({
     data: {
       userId: session.user.id,
       action: "ADMIN_UPDATED_USER",
-      metadata: { targetUserId: params.id, changes: parsed.data },
+      metadata: { targetUserId: id, changes: parsed.data },
     },
   });
 
   return NextResponse.json({ user });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (session?.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await prisma.user.delete({ where: { id: params.id } });
+  await prisma.user.delete({ where: { id } });
 
   await prisma.auditLog.create({
-    data: { userId: session.user.id, action: "ADMIN_DELETED_USER", metadata: { targetUserId: params.id } },
+    data: { userId: session.user.id, action: "ADMIN_DELETED_USER", metadata: { targetUserId: id } },
   });
 
   return NextResponse.json({ message: "User deleted" });
