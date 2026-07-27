@@ -3,8 +3,6 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { sendDiscordAlert } from "@/lib/discord";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", { apiVersion: "2024-10-28.acacia" as any });
-
 /**
  * Stripe webhook.
  *
@@ -13,8 +11,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", { apiVersion: "20
  * Configure this URL (https://yourdomain.com/api/payments/webhook/stripe)
  * in the Stripe dashboard, and copy the signing secret into
  * STRIPE_WEBHOOK_SECRET.
+ *
+ * The Stripe client is created lazily inside the handler (not at module
+ * scope) so the build doesn't crash when STRIPE_SECRET_KEY isn't set yet.
  */
 export async function POST(req: NextRequest) {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json({ error: "Stripe is not configured" }, { status: 501 });
+  }
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
   const signature = req.headers.get("stripe-signature");
   const rawBody = await req.text();
 
