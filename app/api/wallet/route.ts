@@ -9,6 +9,9 @@ import { buildJazzCashRequest } from "@/lib/jazzcash";
 const topUpSchema = z.object({
   amount: z.number().positive().max(5000),
   paymentMethod: z.enum(["STRIPE", "PAYPAL", "RAZORPAY", "JAZZCASH"]),
+  // Only relevant when paymentMethod is JAZZCASH — lets the user choose
+  // between JazzCash's mobile wallet flow and their debit/credit card flow.
+  jazzCashChannel: z.enum(["wallet", "card"]).optional(),
 });
 
 export async function GET() {
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
   const parsed = topUpSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { amount, paymentMethod } = parsed.data;
+  const { amount, paymentMethod, jazzCashChannel } = parsed.data;
 
   const payment = await prisma.payment.create({
     data: {
@@ -56,6 +59,7 @@ export async function POST(req: NextRequest) {
       description: "NexSeat wallet top-up",
       transactionId: payment.transactionId,
       returnUrl: `${appUrl}/api/payments/webhook/jazzcash`,
+      channel: jazzCashChannel ?? "wallet",
     });
     return NextResponse.json({ paymentId: payment.id, checkoutUrl, fields, method: "POST" });
   }
