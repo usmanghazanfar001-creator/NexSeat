@@ -12,6 +12,11 @@ import crypto from "crypto";
  *   2. JazzCash redirects the customer back to `pp_ReturnURL` with the
  *      result (also secure-hashed) — that's the "webhook" equivalent here.
  *
+ * JazzCash supports two customer-facing channels from the same API:
+ *   - pp_TxnType "MWALLET" — JazzCash Mobile Wallet (phone number + PIN)
+ *   - pp_TxnType "MPAY"    — Debit/Credit Card (Visa/Mastercard), hosted
+ *                             card entry page
+ *
  * Docs: https://developer.jazzcash.com.pk (Merchant Integration Guide -
  * Hosted Checkout Page / HTTP POST API). Sandbox and production have
  * different base URLs and credentials — swap JAZZCASH_ENV accordingly.
@@ -23,6 +28,8 @@ const PRODUCTION_URL = "https://payments.jazzcash.com.pk/CustomerPortal/transact
 export function getJazzCashCheckoutUrl() {
   return process.env.JAZZCASH_ENV === "production" ? PRODUCTION_URL : SANDBOX_URL;
 }
+
+export type JazzCashChannel = "wallet" | "card";
 
 type JazzCashFields = Record<string, string>;
 
@@ -47,19 +54,25 @@ export function verifySecureHash(fields: JazzCashFields, integritySalt: string) 
   return received === expected;
 }
 
-/** Builds the full signed field set for a Mobile Wallet / hosted checkout transaction. */
+/**
+ * Builds the full signed field set for a JazzCash hosted checkout
+ * transaction. Pass `channel: "card"` to route the customer to JazzCash's
+ * debit/credit card entry page instead of the mobile wallet flow.
+ */
 export function buildJazzCashRequest({
   amount,
   billReference,
   description,
   transactionId,
   returnUrl,
+  channel = "wallet",
 }: {
   amount: number; // in PKR
   billReference: string;
   description: string;
   transactionId: string;
   returnUrl: string;
+  channel?: JazzCashChannel;
 }) {
   const merchantId = process.env.JAZZCASH_MERCHANT_ID ?? "";
   const password = process.env.JAZZCASH_PASSWORD ?? "";
@@ -76,7 +89,7 @@ export function buildJazzCashRequest({
 
   const fields: JazzCashFields = {
     pp_Version: "1.1",
-    pp_TxnType: "MWALLET",
+    pp_TxnType: channel === "card" ? "MPAY" : "MWALLET",
     pp_Language: "EN",
     pp_MerchantID: merchantId,
     pp_Password: password,
