@@ -9,6 +9,7 @@ export default function WalletPage() {
   const [balance, setBalance] = useState<number | null>(null);
   const [amount, setAmount] = useState(10);
   const [method, setMethod] = useState<"STRIPE" | "PAYPAL" | "RAZORPAY" | "JAZZCASH">("STRIPE");
+  const [jazzCashChannel, setJazzCashChannel] = useState<"wallet" | "card">("wallet");
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
@@ -26,7 +27,11 @@ export default function WalletPage() {
     const res = await fetch("/api/wallet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, paymentMethod: method }),
+      body: JSON.stringify({
+        amount,
+        paymentMethod: method,
+        ...(method === "JAZZCASH" ? { jazzCashChannel } : {}),
+      }),
     });
     setLoading(false);
     if (!res.ok) return;
@@ -91,6 +96,21 @@ export default function WalletPage() {
               <option value="JAZZCASH">JazzCash (Pakistan)</option>
             </select>
           </div>
+
+          {method === "JAZZCASH" && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">JazzCash checkout type</label>
+              <select
+                value={jazzCashChannel}
+                onChange={(e) => setJazzCashChannel(e.target.value as typeof jazzCashChannel)}
+                className="h-11 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="wallet">Mobile Wallet (phone + PIN)</option>
+                <option value="card">Debit/Credit Card</option>
+              </select>
+            </div>
+          )}
+
           <Button className="w-full" onClick={topUp} disabled={loading}>
             {loading ? "Redirecting..." : `Add ${formatCurrency(amount)}`}
           </Button>
