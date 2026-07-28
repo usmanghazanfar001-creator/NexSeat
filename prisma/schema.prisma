@@ -103,27 +103,58 @@ enum SubscriptionStatus {
 
 model Subscription {
   id              String             @id @default(cuid())
-  platform        String // e.g. "ChatGPT Plus"
+  platform        String
   logoUrl         String?
+  bannerUrl       String?
   monthlyPrice    Decimal            @db.Decimal(10, 2)
+  yearlyPrice     Decimal?           @db.Decimal(10, 2)
   ownerId         String
   availableSlots  Int
   occupiedSlots   Int                @default(0)
   renewalDate     DateTime
   status          SubscriptionStatus @default(ACTIVE)
   description     String?
-  tosAcknowledged Boolean            @default(false) // owner confirms sharing is permitted
+  tosAcknowledged Boolean            @default(false)
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  owner    User      @relation("SubscriptionOwner", fields: [ownerId], references: [id])
-  members  Member[]
-  payments Payment[]
-  reviews  Review[]
-  messages Message[]
+  // --- Catalog / marketing metadata ---
+  category        String?            // e.g. "AI Assistants", "AI Coding", "Design"
+  websiteUrl      String?            // official product site, e.g. https://chat.openai.com
+  rating          Decimal?           @db.Decimal(2, 1) // e.g. 4.7
+  isPopular       Boolean            @default(false)
+  isFeatured      Boolean            @default(false)
+  isEnabled       Boolean            @default(true) // admin kill-switch, separate from status
+  tags            String[]           @default([])
+  searchKeywords  String[]           @default([])
+  faqs            Json?              // [{ question, answer }]
+  terms           String?            @db.Text
+  refundPolicy    String?            @db.Text
+  supportEmail    String?
+
+  owner     User        @relation("SubscriptionOwner", fields: [ownerId], references: [id])
+  members   Member[]
+  payments  Payment[]
+  reviews   Review[]
+  messages  Message[]
+  waitlist  Waitlist[]
 
   @@index([ownerId])
   @@index([status])
+  @@index([category])
+}
+
+model Waitlist {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  notified       Boolean  @default(false) // true once we've emailed them about an open seat
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, userId])
 }
 
 model Member {
