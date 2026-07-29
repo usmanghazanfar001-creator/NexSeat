@@ -4,7 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import crypto from "crypto";
+import Stripe from "stripe";
 import { buildJazzCashRequest } from "@/lib/jazzcash";
+import { createRazorpayOrder } from "@/lib/razorpay";
 
 const topUpSchema = z.object({
   amount: z.number().positive().max(5000),
@@ -64,12 +66,67 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ paymentId: payment.id, checkoutUrl, fields, method: "POST" });
   }
 
-  // Placeholder for the other gateways: return a redirect URL your client
-  // would send the user to. Swap this for a real Stripe Checkout Session /
-  // PayPal order / Razorpay order (see docs/PAYMENT_FLOW.md).
-  return NextResponse.json({
-    paymentId: payment.id,
-    checkoutUrl: `/checkout/${payment.id}`,
-    method: "GET",
-  });
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  if (paymentMethod === "STRIPE") {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: "Stripe is not configured" }, { status: 501 });
+    }
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: "NexSeat wallet top-up" },
+            unit_amount: Math.round(amount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      // Read by the webhook to look up this Payment row.
+      metadata: { transactionId: payment.transactionId },
+      payment_intent_data: { metadata: { transactionId: payment.transactionId } },
+      success_url: `${appUrl}/dashboard/wallet?status=success`,
+      cancel_url: `${appUrl}/dashboard/wallet?status=cancelled`,
+    });
+
+    if (!checkoutSession.url) {
+      return NextResponse.json({ error: "Failed to create Stripe checkout session" }, { status: 502 });
+    }
+
+    return NextResponse.json({ paymentId: payment.id, checkoutUrl: checkoutSession.url, method: "GET" });
+  }
+
+  if (paymentMethod === "RAZORPAY") {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return NextResponse.json({ error: "Razorpay is not configured" }, { status: 501 });
+    }
+    // Razorpay has no hosted redirect URL for a plain order the way Stripe
+    // does — the client opens Razorpay's Checkout.js widget with the
+    // returned order id. See lib/razorpay.ts and docs/PAYMENT_FLOW.md.
+    const order = await createRazorpayOrder({
+      amountInPaise: Math.round(amount * 100),
+      transactionId: payment.transactionId,
+      receipt: payment.id,
+    });
+
+    return NextResponse.json({
+      paymentId: payment.id,
+      method: "RAZORPAY_CHECKOUT_JS",
+      razorpayOrderId: order.id,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      amount: order.amount,
+      currency: order.currency,
+    });
+  }
+
+  if (paymentMethod === "PAYPAL") {
+    // Not yet wired to PayPal's real Orders API — see docs/PAYMENT_FLOW.md.
+    return NextResponse.json({ error: "PayPal top-ups are not yet available" }, { status: 501 });
+  }
+
+  return NextResponse.json({ error: "Unsupported payment method" }, { status: 400 });
 }
