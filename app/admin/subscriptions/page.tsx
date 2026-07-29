@@ -251,3 +251,122 @@ export default function AdminSubscriptionsPage() {
                   className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
               </div>
               <div>
+                <label className="mb-1.5 block text-sm font-medium">Yearly price ($, optional)</label>
+                <input type="number" value={form.yearlyPrice} onChange={(e) => setForm({ ...form, yearlyPrice: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Available slots</label>
+                <input type="number" value={form.availableSlots} onChange={(e) => setForm({ ...form, availableSlots: Number(e.target.value) })}
+                  className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Rating</label>
+                <input type="number" step="0.1" min="0" max="5" value={form.rating} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })}
+                  className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Website URL</label>
+                <input value={form.websiteUrl} onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Support email</label>
+                <input value={form.supportEmail} onChange={(e) => setForm({ ...form, supportEmail: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-border bg-secondary/50 px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium">Description</label>
+                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isPopular" checked={form.isPopular} onChange={(e) => setForm({ ...form, isPopular: e.target.checked })} />
+                <label htmlFor="isPopular" className="text-sm font-medium">Mark as popular</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isFeatured" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} />
+                <label htmlFor="isFeatured" className="text-sm font-medium">Mark as featured</label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setFormOpen(false)} disabled={saving}>Cancel</Button>
+              <Button size="sm" onClick={saveForm} disabled={saving || !form.platform}>
+                {saving ? "Saving..." : editingId ? "Save changes" : "Create subscription"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 text-sm text-muted-foreground">Loading subscriptions...</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">No subscriptions found.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="p-3 font-medium">Platform</th>
+                    <th className="p-3 font-medium">Category</th>
+                    <th className="p-3 font-medium">Owner</th>
+                    <th className="p-3 font-medium">Price</th>
+                    <th className="p-3 font-medium">Slots</th>
+                    <th className="p-3 font-medium">Status</th>
+                    <th className="p-3 font-medium">Renewal</th>
+                    <th className="p-3 font-medium">Flags</th>
+                    <th className="p-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((item) => (
+                    <tr key={item.id} className="border-b border-border last:border-0">
+                      <td className="p-3 font-medium">{item.platform}</td>
+                      <td className="p-3 text-muted-foreground">{item.category ?? "—"}</td>
+                      <td className="p-3 text-muted-foreground">{item.owner.email}</td>
+                      <td className="p-3">{formatCurrency(item.monthlyPrice)}/mo</td>
+                      <td className="p-3">{item.occupiedSlots}/{item.availableSlots}</td>
+                      <td className="p-3">
+                        <select
+                          value={item.status}
+                          onChange={(e) => setStatus(item.id, e.target.value as AdminSubscription["status"])}
+                          className="h-8 rounded-md border border-border bg-secondary/50 px-2 text-xs outline-none"
+                        >
+                          <option value="ACTIVE">Active</option>
+                          <option value="FULL">Full</option>
+                          <option value="PAUSED">Paused</option>
+                          <option value="CANCELLED">Cancelled</option>
+                        </select>
+                      </td>
+                      <td className="p-3 text-muted-foreground">{formatDate(item.renewalDate)}</td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1">
+                          {item.isPopular && <Badge variant="secondary">Popular</Badge>}
+                          {item.isFeatured && <Badge variant="secondary">Featured</Badge>}
+                          {!item.isEnabled && <Badge variant="destructive">Disabled</Badge>}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => toggleField(item.id, "isFeatured", !item.isFeatured)}>
+                            {item.isFeatured ? "Unfeature" : "Feature"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => duplicate(item)}>Duplicate</Button>
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>Edit</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
